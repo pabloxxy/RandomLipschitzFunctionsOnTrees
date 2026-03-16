@@ -1,11 +1,13 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import mpmath as mp
+import math
+import matplotlib.animation as animation
 
-# Use the precision you already set
+# Decimal precision
 mp.dps = 100
 
-# ----- Your functions (F, R, R_inv, psi) go here -----
+# ----- Useful functions -----
 def F(z, d):
     """
     Apply one iteration of the operator F to a probability distribution z.
@@ -111,15 +113,15 @@ def R_inv(x):
     Given a list x = [x_1, x_2, ..., x_L] of ratios, this function returns the
     symmetric probability distribution z (centered at zero) such that R(z) = x.
 
-    The construction follows the explicit formula derived from the definition
+    The construction follows the explicit formula one can derive from the definition
     of R:  x_i = z_i / z_{i-1}  for i ≥ 1, with z_0 as the value at distance 0.
     For a symmetric distribution we have z_{-i} = z_i. The probabilities are
-    normalised so that z_0 + 2·∑_{i=1}^{L} z_i = 1.
+    normalised so that z_0 + 2 sum_{i=1}^{L} z_i = 1.
 
     Parameters
     ----------
     x : list of mpf numbers
-        A list of length L representing the ratios x_1, x_2, … , x_L.
+        A list of length L representing the ratios x_1, x_2, ... , x_L.
         All entries must be non‑negative.
 
     Returns
@@ -131,13 +133,12 @@ def R_inv(x):
 
     Notes
     -----
-    - The computation uses mpmath high‑precision arithmetic.
     - If any ratio x_j = 0, all subsequent products become zero,
       which is handled correctly.
     - The input is assumed to belong to the image of R (i.e., it satisfies
       the necessary convergence conditions), but the function will still
       produce a normalised list even if the sum of products diverges (in
-      that case the denominator might be infinite, which would make z₀ = 0).
+      that case the denominator might be infinite, which would make z_0 = 0).
     - The length L of the input determines how many positive‑side values
       are returned; further ratios (beyond L) are assumed to be zero.
     """
@@ -149,7 +150,7 @@ def R_inv(x):
         current *= x[i]
         p[i] = current
 
-    # Denominator for z_0 = 1 / (1 + 2·∑ p[i])
+    # Denominator for z_0 = 1 / (1 + 2 \sum p[i])
     sum_prod = mp.fsum(p)
     denominator = 1 + 2 * sum_prod
     z0 = 1 / denominator
@@ -195,24 +196,21 @@ def psi(x, d):
         non‑negative.  The length L can be 0 (empty list), in which case the
         input is interpreted as the infinite zero sequence.
     d : int
-        The degree of the tree (branching factor).
+        The degree of the tree.
 
     Returns
     -------
     list of mpf numbers
         A list y of length L+1 (or length 1 if L=0) containing the ratios
-        ψ_1(x), ψ_2(x), …, ψ_{L+1}(x).  All entries are non‑negative.
+        ψ_1(x), ψ_2(x), ..., ψ_{L+1}(x).  All entries are non‑negative.
 
     Notes
     -----
-    - The formulas are evaluated using mpmath high‑precision arithmetic.
     - When L=0 (empty list), the input corresponds to all ratios zero, and
       the output is [1] because ψ_1(0) = 1.
     - The output length is always one greater than the input length because
       the recurrence for ψ_{L+1} uses only x_L (and the implicitly zero
-      x_{L+1}, x_{L+2}) and can be non‑zero.  This expansion is essential
-      for correctly iterating ψ and matches the theoretical behaviour of the
-      infinite‑dimensional map.
+      x_{L+1}, x_{L+2}) and can be non‑zero.
     """
     L = len(x)
 
@@ -220,7 +218,7 @@ def psi(x, d):
     if L == 0:
         return [mp.mpf(1)]
 
-    # Output list of length L+1 (indices 0 … L)
+    # Output list of length L+1 (indices 0, ..., L)
     y = [mp.mpf(0)] * (L + 1)
 
     # ψ_1(x) = ((1 + x_1 + x_1 x_2) / (1 + 2 x_1))^d
@@ -230,7 +228,7 @@ def psi(x, d):
     denominator1 = 1 + 2 * x1
     y[0] = (numerator1 / denominator1) ** d
 
-    # ψ_n for n = 2 … L
+    # ψ_n for n = 2, ..., L
     for n in range(2, L + 1):          # n is the index in the infinite sequence
         idx = n - 1                     # corresponding position in y
         x_prev = x[n - 2]               # x_{n-1}
@@ -253,51 +251,63 @@ def psi(x, d):
 
 
 
+# -----------------------------------------------------------------------------------------
+# ----- Make an animation: distributions of the form 1/2 \delta_{-L} + 1/2 \delta_{L} -----
+# -----------------------------------------------------------------------------------------
 
 # ----- Parameters -----
-L_half =4                     # half‑length: support from -L_half to L_half
-epsilon = mp.mpf('1e-10')       # small probability on interior points
-d = 2                          # branching factor (change as needed)
-y_max = 10**100                # cutoff for values that get too big 
-
-# ----- Build initial symmetric distribution z0 -----
-# Support indices: -10, -9, ..., 9, 10  → 21 points
-z0 = [mp.mpf(0)] * (2 * L_half + 1)
-
-# # Probability at the two ends: make total sum = 1
-# a = (1 - (2 * L_half - 1) * epsilon) / 2   # ~0.5
-# z0[0] = a                # -10
-# z0[-1] = a               # +10
-# for i in range(1, 2 * L_half):   # interior indices -9 … 9
-#     z0[i] = epsilon
-z0[L_half+1] = 1
-
-# ----- Compute initial ratios x0 = R(z0) -----
-x = R(z0)             # list of length 10 (ratios x_1, …, x_10)
-print("Initial ratios (x0):", [float(v) for v in x])
+L_half = 10                    # half‑length: support from -L_half to L_half
+d = 2                          # branching factor 
+num_iterations = 1000          # number of iterations of ψ (number of frames in final animation)
+fps = 10                       # frames per second in animation
 
 
-import math
-import matplotlib.animation as animation
+# ----- Set the initial distribution -----
+total_len = 2 * L_half + 3      # extra zero at first and last position so graph looks nicer
+z0 = [mp.mpf(0)] * total_len    # initialise with zeros
+centre_idx = L_half + 1         
+# Set the mass points at ±L_half
+z0[centre_idx - L_half] = mp.mpf(0.5)
+z0[centre_idx + L_half] = mp.mpf(0.5)
+
+# print(z0) # Debugging
+
+# ----- Apply F to z0 L_half times so we end up with a distribution whose support is an interval -----
+for i in range(L_half):
+ z0 = F(z0, d)
+
+# print(z0) # Debugging
+
+# ----- Transform z to x using R -----
+x = R(z0)            
+# print("Initial ratios (x0):", [float(v) for v in x]) # Debugging
+
 
 # ----- Compute iterations of psi -----
-num_iterations = 1000           # number of frames (change as desired)
-x_seq = [x]                   # start with the initial ratios from above
-for _ in range(num_iterations):
+x_seq = [x]                     # start with the initial ratios from above
+for i in range(num_iterations):
     x_seq.append(psi(x_seq[-1], d))
 
+    # Countdown just to see how the code is going
+    if i%100==0:
+        print(i/100)
 
-# ----- Compute the corresponding probability distributions via R_inv -----
+# ----- Compute the corresponding probability distributions using R_inv -----
 z_seq = [R_inv(x) for x in x_seq]   # each z is a symmetric list of length 2*len(x)+1
 
+
+
+
+
+# ------------------------------------------------------------
+# ----- The rest of the code is to set up the animations -----
+# ------------------------------------------------------------
 
 # Probabilities plot
 max_len_probs = max(len(zi) for zi in z_seq)          # total length, odd
 half_len = (max_len_probs - 1) // 2
 x_min_probs, x_max_probs = -half_len - 0.5, half_len + 0.5   # leave margin
 
-
-# ----- Set up the figure with two subplots -----
 fig, (ax2, ax1) = plt.subplots(1, 2, figsize=(14, 5))
 
 # Left subplot: ratios
@@ -308,7 +318,7 @@ ax1.set_ylabel('Ratio $x_i$')
 ax1.set_title('Iteration 0')
 
 # Right subplot: probabilities
-ax2.set_xlim(-L_half-5, L_half+5)
+ax2.set_xlim(-L_half-10, L_half+10)
 ax2.set_ylim(-0.025, 1)
 ax2.set_xlabel('Distance from centre')
 ax2.set_ylabel('Probability')
@@ -326,6 +336,7 @@ def init():
     line_probs.set_data([], [])
     return line_ratios, line_probs
 
+y_max = 10**100                # cutoff for values that get too big 
 def update(frame):
     # Update ratios (left subplot)
     x_vals = x_seq[frame]
@@ -360,15 +371,18 @@ def update(frame):
     line_probs.set_data(indices_probs, values_probs)
 
     # Update titles
-    ax1.set_title(f'Iteration {frame} (ratios)')
-    ax2.set_title(f'Iteration {frame} (distribution)')
+    ax1.set_title(f'Iteration {frame + L_half} (ratios)')
+    ax2.set_title(f'Iteration {frame + L_half} (distribution)')
     return line_ratios, line_probs
 
-# ----- Create and show the animation -----
+plt.tight_layout()
+plt.subplots_adjust(top=0.88)      
+
 anim = animation.FuncAnimation(
     fig, update, frames=len(x_seq),
-    init_func=init, blit=False, repeat=True
+    init_func=init, blit=False
 )
 
-plt.tight_layout()
-plt.show()
+# ----- Save or show animation -----
+anim.save('animation.mp4', writer='ffmpeg', fps=fps, dpi=200)
+plt.close(fig)  
