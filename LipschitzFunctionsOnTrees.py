@@ -252,6 +252,92 @@ def psi(x, d):
 
 
 
+def derivative(i,j,x,d):
+
+    """
+    Compute ∂ψ_i / ∂x_j evaluated at x.
+    
+    Parameters
+    ----------
+    i : int
+        Index of ψ (1‑based). ψ_i is the i‑th ratio.
+    j : int
+        Index of x (1‑based). Derivative with respect to x_j.
+    x : list of mpf numbers
+        The ratio vector, with x[0] = x_1, x[1] = x_2, ... .
+        Missing entries (beyond len(x)) are treated as zero.
+    d : int
+        Degree of the tree (branching factor).
+    
+    Returns
+    -------
+    mpf
+        The partial derivative ∂ψ_i / ∂x_j evaluated at x, as an mpmath high‑precision float.
+    """
+
+    # Fix if x is too short: x[k] or return 0 if out of bounds
+    def get_x(k):
+        return x[k] if k < len(x) else mp.mpf(0)
+
+    # The matrix is tridiagonal
+    if np.abs(i-j) > 1:
+        return mp.mpf(0)
+
+    # Case i = 1
+    if i==1: 
+     
+     # Handle Python indices starting at 0
+     x1 = get_x(0)
+     x2 = get_x(1)
+
+     # Case i = j = 1
+     # Equation (2.14) in the paper
+     # ∂ψ_1/∂x_1 = -d * (1 - x2) * (1 + x1 + x1 x2)^(d-1) / (1 + 2 x1)^(d+1)
+     if j==1:
+        return -(d * (1 - x2) * (1 + x1 + x1*x2)**(d-1)) / ((1 + 2*x1) ** (d+1))
+     
+     # Case i = 1, j = 2
+     # Equation (2.15) in the paper
+     # ∂ψ_1/∂x_2 = d * x1 * (1 + x1 + x1 x2)^(d-1) / (1 + 2 x1)^d
+     elif j==2:
+        return (d * x1 * (1 + x1 + x1*x2)**(d-1)) / ((1 + 2*x1) ** d)
+     
+     else:
+        return mp.mpf(0)
+    
+
+    # Case i >= 2
+    # Handle Python indices starting at 0
+    x_prev = get_x(i-2)
+    x_curr = get_x(i-1)
+    x_next = get_x(i)
+    # Precompute terms that will be used multiple times
+    term = 1 + x_curr + x_curr * x_next
+    denom = 1 + x_prev + x_prev * x_curr
+
+    # Case j = i-1
+    # Equation (2.16) in paper
+    # ∂ψ_i/∂x_{i-1} = d * x_{i-1}^{d-1} * term^d / denom^{d+1}
+    if j == i-1:
+        return (d * (x_prev ** (d-1)) * term ** d) / (denom ** (d+1))
+    
+    # Case j = i
+    # Equation (2.17) in paper
+    # ∂ψ_i/∂x_i = d * x_{i-1}^d * term^{d-1} * (1 + x_{i-1} x_{i+1} + x_{i+1}) / denom^{d+1}
+    elif j == i:
+        return (d * (x_prev ** d) * (term ** (d-1)) * (1 + x_prev * x_next + x_next)) / (denom ** (d+1))
+    
+    # Case j = i+1
+    # Equation (2.18) in paper
+    # ∂ψ_i/∂x_{i+1} = d * x_{i-1}^d * x_i * term^{d-1} / denom^d
+    elif j == i+1:
+        return (d * (x_prev ** d) * x_curr * (term ** (d-1))) / (denom ** d)
+    
+    else:
+        return mp.mpf(0)
+
+
+
 
 # Parameters
 d = 2
